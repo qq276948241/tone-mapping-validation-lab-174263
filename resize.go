@@ -185,10 +185,10 @@ func resizeNearest(img image.Image, width, height int) *image.NRGBA {
 		src := newScanner(img)
 		parallel(0, height, func(ys <-chan int) {
 			for y := range ys {
-				srcY := int((float64(y) + 0.5) * dy)
+				srcY := nearestSourceIndex(y, height, img.Bounds().Dy())
 				dstOff := y * dst.Stride
 				for x := 0; x < width; x++ {
-					srcX := int((float64(x) + 0.5) * dx)
+					srcX := nearestSourceIndex(x, width, img.Bounds().Dx())
 					src.scan(srcX, srcY, srcX+1, srcY+1, dst.Pix[dstOff:dstOff+4])
 					dstOff += 4
 				}
@@ -198,11 +198,11 @@ func resizeNearest(img image.Image, width, height int) *image.NRGBA {
 		src := toNRGBA(img)
 		parallel(0, height, func(ys <-chan int) {
 			for y := range ys {
-				srcY := int((float64(y) + 0.5) * dy)
+				srcY := nearestSourceIndex(y, height, img.Bounds().Dy())
 				srcOff0 := srcY * src.Stride
 				dstOff := y * dst.Stride
 				for x := 0; x < width; x++ {
-					srcX := int((float64(x) + 0.5) * dx)
+					srcX := nearestSourceIndex(x, width, img.Bounds().Dx())
 					srcOff := srcOff0 + srcX*4
 					copy(dst.Pix[dstOff:dstOff+4], src.Pix[srcOff:srcOff+4])
 					dstOff += 4

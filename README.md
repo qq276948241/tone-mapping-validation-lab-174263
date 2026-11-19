@@ -139,6 +139,75 @@ Original image                     | Hue = 60                                   
 -----------------------------------|----------------------------------------------|---------------------------------------------
 ![srcImage](testdata/flowers_small.png) | ![dstImage](testdata/out_hue_p60.png) | ![dstImage](testdata/out_hue_m60.png)
 
+## Semantic processing path
+
+In addition to the legacy entry points (`Resize`, `Crop`, `Rotate`,
+`Adjust*`, `Encode`, ...) whose signatures and behavior are unchanged, the
+package provides a semantic processing path that validates inputs, returns
+stable sentinel errors and never mutates the caller's source image.
+
+### Error-returning transforms
+
+Every `*Checked` function validates its arguments before touching pixels and
+returns one of the package's sentinel errors (`ErrNilImage`, `ErrEmptyImage`,
+`ErrInvalidSize`, `ErrInvalidParameter`, `ErrAliasedImage`,
+`ErrRadiusTooLarge`, ...) on failure.
+
+```go
+dst, err := imaging.ResizeChecked(src, 320, 0, imaging.Lanczos)
+if err != nil {
+    // src is guaranteed to be untouched.
+    return err
+}
+rotated, err := imaging.RotateChecked(src, -37.5, color.NRGBA{0, 0, 0, 0})
+cropped, err := imaging.CropChecked(src, image.Rect(2, 2, 10, 10))
+```
+
+Fixed sampling rules make results reproducible:
+
+- nearest-neighbor always maps `(dst+0.5)*srcSize/dstSize` through
+  `nearestSourceIndex` (floor, then clamp), including odd dimensions;
+- filtered resizing uses half-pixel centered separable passes with one
+  round-half-up truncation point, so two chained resizes match the explicit
+  reference passes;
+- rotation normalizes any angle (including negatives) to `[0, 360)` and fills
+  uncovered pixels with the requested background, which may be fully
+  transparent.
+
+### Reproducible color pipeline
+
+`ApplyColorPipeline` runs brightness, contrast, gamma and saturation in one
+fixed order on `float64` intermediates, with alpha preserved exactly:
+
+```go
+out, err := imaging.ApplyColorPipeline(src, imaging.ColorAdjustments{
+    Brightness: 10,
+    Contrast:   -5,
+    Gamma:      1.2,
+    Saturation: 20,
+})
+```
+
+Alpha handling goes through `Premultiply`, `Unpremultiply` and
+`CompositeOver`. Fully transparent pixels are stored as `(0,0,0,0)` so they
+cannot bleed color into visible edges (dark halos).
+
+### Unified I/O and batch model
+
+`DecodeResource` returns a `Resource` containing one `Frame` per stored image
+(PNG/JPEG/TIFF/BMP produce one frame, GIF produces one per frame) plus format
+metadata. Unknown formats return `ErrUnsupportedFormat`; truncated streams
+return an error wrapping `ErrTruncated` (`errors.Is`).
+
+```go
+res, err := imaging.DecodeResource(reader)
+if err != nil { ... }
+// res.Frames[i].Image, .Delay, .Disposal, .Index; res.Metadata.LoopCount
+
+results, err := imaging.BatchProcess(ctx, items) // parallel, submission-ordered
+err = imaging.SaveAtomic(img, "out.png")        // temp file + rename, rollback
+```
+
 ## FAQ
 
 ### Incorrect image orientation after processing (e.g. an image appears rotated after resizing)

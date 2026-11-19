@@ -89,13 +89,17 @@ func (s *scanner) scan(x1, y1, x2, y2 int, dst []uint8) {
 					d[3] = a
 				default:
 					s := img.Pix[i : i+4 : i+4]
-					r16 := uint16(s[0])
-					g16 := uint16(s[1])
-					b16 := uint16(s[2])
-					a16 := uint16(a)
-					d[0] = uint8(r16 * 0xff / a16)
-					d[1] = uint8(g16 * 0xff / a16)
-					d[2] = uint8(b16 * 0xff / a16)
+					r8 := uint16(s[0])
+					g8 := uint16(s[1])
+					b8 := uint16(s[2])
+					a8 := uint16(a)
+					// 8-bit unpremultiplication: c = premultiplied*255/a.
+					// Integer truncation matches the standard library's
+					// RGBA-to-NRGBA conversion and keeps a coverage value of 1
+					// at low alpha from inflating to full intensity.
+					d[0] = uint8(r8 * 255 / a8)
+					d[1] = uint8(g8 * 255 / a8)
+					d[2] = uint8(b8 * 255 / a8)
 					d[3] = a
 				}
 				j += 4
